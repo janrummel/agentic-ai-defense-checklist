@@ -1,0 +1,141 @@
+name: Agentic AI Security Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-lint:
+    runs-on: ubuntu-latest
+    name: Security Configuration Check
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for diff checks
+
+      - name: Check for plaintext secrets
+        run: |
+          echo "🔍 Scanning for plaintext secrets in tracked files..."
+          PATTERNS=(
+            'sk-[a-zA-Z0-9]{20,}'          # OpenAI/Anthropic keys
+            'AKIA[A-Z0-9]{16}'              # AWS access keys
+            'ghp_[a-zA-Z0-9]{36}'           # GitHub PATs
+            'xox[bprs]-[a-zA-Z0-9-]+'       # Slack tokens
+            'AIza[a-zA-Z0-9_-]{35}'         # Google API keys
+            'sk_live_[a-zA-Z0-9]{24,}'      # Stripe keys
+            'sq0atp-[a-zA-Z0-9_-]{22}'      # Square tokens
+          )
+
+          FOUND=0
+          for pattern in "${PATTERNS[@]}"; do
+            MATCHES=$(git grep -lE "$pattern" -- ':!*.lock' ':!node_modules' ':!*.min.js' 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              echo "🚨 Potential secret pattern '$pattern' found in:"
+              echo "$MATCHES" | sed 's/^/   /'
+              FOUND=1
+            fi
+          done
+
+          if [ $FOUND -eq 1 ]; then
+            echo ""
+            echo "❌ Plaintext secrets detected. Remove them and use vault references."
+            exit 1
+          fi
+          echo "✅ No plaintext secrets found."
+
+      - name: Check .env files not tracked
+        run: |
+          echo "🔍 Checking for tracked .env files..."
+          ENV_FILES=$(git ls-files | grep -E '\.env(\.[a-zA-Z]+)?$' | grep -v '.env.example' || true)
+          if [ -n "$ENV_FILES" ]; then
+            echo "🚨 .env files are tracked in git:"
+            echo "$ENV_FILES" | sed 's/^/   /'
+            echo ""
+            echo "❌ Remove .env files from git and add to .gitignore."
+            exit 1
+          fi
+          echo "✅ No .env files tracked."
+
+      - name: Verify .gitignore includes security entries
+        run: |
+          echo "🔍 Checking .gitignore for security entries..."
+          REQUIRED_ENTRIES=(
+            '.env'
+            '.claude/'
+          )
+          MISSING=0
+          for entry in "${REQUIRED_ENTRIES[@]}"; do
+            if ! grep -qF "$entry" .gitignore 2>/dev/null; then
+              echo "⚠️  Missing .gitignore entry: $entry"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "❌ Add missing entries to .gitignore."
+            exit 1
+          fi
+          echo "✅ .gitignore includes required security entries."
+
+      - name: Check prompt/config integrity
+        run: |
+          echo "🔍 Checking prompt/config file integrity..."
+          if [ -f .prompt-integrity-baseline ]; then
+            CURRENT=$(find . -name "CLAUDE.md" -o -name "AGENTS.md" -o -name "SKILL.md" | sort | xargs sha256sum 2>/dev/null || echo "no-files")
+            BASELINE=$(cat .prompt-integrity-baseline)
+            if [ "$CURRENT" != "$BASELINE" ]; then
+              echo "⚠️  Prompt/config files have been modified:"
+              diff <(echo "$BASELINE") <(echo "$CURRENT") || true
+              echo ""
+              echo "If this is intentional, update the baseline:"
+              echo "  ./scripts/prompt-integrity-check.sh --baseline"
+              # Warning only — don't fail the build, but flag for review
+            else
+              echo "✅ Prompt/config files match baseline."
+            fi
+          else
+            echo "ℹ️  No .prompt-integrity-baseline found. Run:"
+            echo "  ./scripts/prompt-integrity-check.sh --baseline"
+          fi
+
+      - name: Check for dangerous claude config patterns
+        if: hashFiles('.claude/settings.json') != ''
+        run: |
+          echo "🔍 Scanning Claude configuration..."
+
+          # Check enableAllProjectMcpServers
+          if grep -q '"enableAllProjectMcpServers":\s*true' .claude/settings.json 2>/dev/null; then
+            echo "🚨 enableAllProjectMcpServers is set to true — this allows any MCP server!"
+            exit 1
+          fi
+
+          # Check for empty hooks (no protection)
+          HOOKS=$(python3 -c "
+          import json
+          with open('.claude/settings.json') as f:
+              data = json.load(f)
+          hooks = data.get('hooks', {})
+          pretool = [k for k in hooks if 'PreTool' in k]
+          if not pretool:
+              print('NO_HOOKS')
+          else:
+              print('HAS_HOOKS')
+          " 2>/dev/null || echo "PARSE_ERROR")
+
+          if [ "$HOOKS" = "NO_HOOKS" ]; then
+            echo "⚠️  No PreToolUse hooks configured — consider adding security hooks."
+            echo "   See: examples/hooks/README.md"
+          fi
+
+          echo "✅ Claude configuration check complete."
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Agentic AI Security Lint Complete"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

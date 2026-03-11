@@ -1,0 +1,600 @@
+{
+  "meta": {
+    "title": "Agentic AI Security Checklist",
+    "version": "2.0.0",
+    "based_on": "McKinsey/Lilli Breach (March 2026)",
+    "last_updated": "2026-03-11",
+    "total_items": 43,
+    "total_critical": 24,
+    "total_recommended": 19,
+    "sources": [
+      {
+        "name": "CodeWall.ai Blog",
+        "url": "https://codewall.ai/blog/how-we-hacked-mckinseys-ai-platform",
+        "date": "2026-03-09"
+      },
+      {
+        "name": "The Register",
+        "url": "https://www.theregister.com/2026/03/09/mckinsey_ai_chatbot_hacked/",
+        "date": "2026-03-09"
+      },
+      {
+        "name": "Edward Kiledjian Analysis",
+        "url": "https://kiledjian.com/2026/03/10/codewall-says-it-hacked-mckinseys.html",
+        "date": "2026-03-10"
+      }
+    ]
+  },
+  "scoring": {
+    "levels": [
+      {
+        "id": "hardened",
+        "label": "Hardened",
+        "emoji": "🟢",
+        "criteria": "All 24 critical items passed AND ≥80% recommended items",
+        "critical_min": 24,
+        "recommended_pct_min": 0.8
+      },
+      {
+        "id": "acceptable",
+        "label": "Acceptable",
+        "emoji": "🟡",
+        "criteria": "All 24 critical items passed AND <80% recommended items",
+        "critical_min": 24,
+        "recommended_pct_min": 0.0
+      },
+      {
+        "id": "at_risk",
+        "label": "At Risk",
+        "emoji": "🟠",
+        "criteria": "1–5 critical items missing",
+        "critical_missing_max": 5
+      },
+      {
+        "id": "critical",
+        "label": "Critical",
+        "emoji": "🔴",
+        "criteria": "6+ critical items missing",
+        "critical_missing_min": 6
+      }
+    ],
+    "evaluate": "function(checked, items) { const critical = items.filter(i => i.critical); const recommended = items.filter(i => !i.critical); const criticalDone = critical.filter(i => checked[i.id]).length; const criticalMissing = critical.length - criticalDone; const recDone = recommended.filter(i => checked[i.id]).length; const recPct = recommended.length > 0 ? recDone / recommended.length : 1; if (criticalMissing === 0 && recPct >= 0.8) return 'hardened'; if (criticalMissing === 0) return 'acceptable'; if (criticalMissing <= 5) return 'at_risk'; return 'critical'; }"
+  },
+  "categories": [
+    {
+      "id": "api-surface",
+      "number": "01",
+      "title": "API Surface & Exposure",
+      "subtitle": "Lilli lesson: 22 unauthenticated endpoints were the entry point",
+      "icon": "⚡",
+      "accent": "#FF2D2D",
+      "doc": "docs/01-api-surface.md",
+      "lilli_vector": true,
+      "items": [
+        {
+          "id": "api-1",
+          "ref": "1.1",
+          "label": "Complete endpoint inventory",
+          "detail": "All publicly reachable endpoints documented. Run: nmap + API doc scan on host IP",
+          "critical": true,
+          "check_command": "nmap -sV <host-ip> && curl -s http://<host>/docs",
+          "tags": ["network", "recon-defense"]
+        },
+        {
+          "id": "api-2",
+          "ref": "1.2",
+          "label": "No publicly exposed API documentation",
+          "detail": "Swagger/OpenAPI docs were the entry point at Lilli. Check /docs, /swagger, /openapi.json, /redoc, /api-docs",
+          "critical": true,
+          "check_command": "for path in /docs /swagger /openapi.json /redoc /api-docs; do curl -s -o /dev/null -w \"%{http_code} $path\\n\" http://<host>$path; done",
+          "tags": ["network", "recon-defense"]
+        },
+        {
+          "id": "api-3",
+          "ref": "1.3",
+          "label": "All endpoints require authentication",
+          "detail": "Including health checks that may leak internal info. Test each endpoint without auth token",
+          "critical": true,
+          "check_command": "curl -s -H 'Authorization: ' http://<host>/api/v1/<endpoint> | head -20",
+          "tags": ["auth", "recon-defense"]
+        },
+        {
+          "id": "api-4",
+          "ref": "1.4",
+          "label": "Rate limiting on all endpoints",
+          "detail": "Without rate limiting, an agent can probe hundreds of endpoints per second",
+          "critical": false,
+          "check_command": "for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\\n' http://<host>/api/health; done | sort | uniq -c",
+          "tags": ["network", "dos-defense"]
+        },
+        {
+          "id": "api-5",
+          "ref": "1.5",
+          "label": "Error responses don't leak internals",
+          "detail": "No stack traces, DB schemas, or internal paths in error responses",
+          "critical": false,
+          "check_command": "curl -s -X POST http://<host>/api/v1/search -d '{\"invalid'",
+          "tags": ["info-leak", "recon-defense"]
+        }
+      ]
+    },
+    {
+      "id": "injection",
+      "number": "02",
+      "title": "Injection & Input Validation",
+      "subtitle": "Lilli lesson: JSON keys concatenated directly into SQL",
+      "icon": "🛡",
+      "accent": "#FF6B00",
+      "doc": "docs/02-injection.md",
+      "lilli_vector": true,
+      "items": [
+        {
+          "id": "inj-1",
+          "ref": "2.1",
+          "label": "All DB queries fully parameterized",
+          "detail": "Including field names, sort orders, table names — not just values. At Lilli, values were safe but keys were not",
+          "critical": true,
+          "check_command": "grep -rn 'f\".*SELECT\\|f\".*INSERT\\|f\".*UPDATE\\|format.*SELECT\\|%s.*SELECT' --include='*.py' .",
+          "tags": ["injection", "database"]
+        },
+        {
+          "id": "inj-2",
+          "ref": "2.2",
+          "label": "External input sanitized before tool/DB forwarding",
+          "detail": "Messages from WhatsApp/Telegram/Slack/webhooks sanitized before passing to MCP tools or databases",
+          "critical": true,
+          "check_command": "# Review: How does messaging input flow through to DB/tool calls?",
+          "tags": ["injection", "input-validation"]
+        },
+        {
+          "id": "inj-3",
+          "ref": "2.3",
+          "label": "Allowlist for dynamic query field names",
+          "detail": "No user-controlled keys in SQL/NoSQL. Maintain explicit allowlist of valid field names",
+          "critical": true,
+          "check_command": "# Review: Are there places where request.body keys flow into queries?",
+          "tags": ["injection", "database"]
+        },
+        {
+          "id": "inj-4",
+          "ref": "2.4",
+          "label": "MCP tool responses validated for prompt injection",
+          "detail": "Tool responses can contain crafted content that manipulates AI behavior. Treat all tool responses as untrusted",
+          "critical": true,
+          "check_command": "# Review: Are MCP tool responses validated/sanitized before AI processes them?",
+          "tags": ["prompt-injection", "mcp"]
+        },
+        {
+          "id": "inj-5",
+          "ref": "2.5",
+          "label": "No differential error responses enabling schema enumeration",
+          "detail": "CodeWall's agent used blind error-based probing. Uniform errors for 'not found' vs 'query error'",
+          "critical": false,
+          "check_command": "# Test: Do malformed queries return different error codes/messages?",
+          "tags": ["injection", "info-leak"]
+        }
+      ]
+    },
+    {
+      "id": "prompt-integrity",
+      "number": "03",
+      "title": "Prompt & Skill Integrity",
+      "subtitle": "Lilli lesson: System prompts in same DB as user data — writable",
+      "icon": "🔐",
+      "accent": "#00D4FF",
+      "doc": "docs/03-prompt-integrity.md",
+      "lilli_vector": true,
+      "items": [
+        {
+          "id": "pi-1",
+          "ref": "3.1",
+          "label": "System prompts/config under version control",
+          "detail": "Protected branches, no direct push to main. Changes require PR review",
+          "critical": true,
+          "check_command": "git log --oneline -5 -- CLAUDE.md AGENTS.md && git config branch.main.protection",
+          "tags": ["prompt-integrity", "version-control"]
+        },
+        {
+          "id": "pi-2",
+          "ref": "3.2",
+          "label": "Write-protection hook for config files",
+          "detail": "PreToolUse hook blocks automated writes to SKILL.md, CLAUDE.md, AGENTS.md or equivalent",
+          "critical": true,
+          "check_command": "cat ~/.claude/settings.json | python3 -c \"import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('hooks',{}), indent=2))\"",
+          "tags": ["prompt-integrity", "hooks"]
+        },
+        {
+          "id": "pi-3",
+          "ref": "3.3",
+          "label": "Prompt integrity hash verification",
+          "detail": "SHA256 hashes compared at startup or in CI. See examples/ci/prompt-integrity-check.sh",
+          "critical": false,
+          "check_command": "sha256sum CLAUDE.md AGENTS.md skills/*.md 2>/dev/null",
+          "tags": ["prompt-integrity", "ci"]
+        },
+        {
+          "id": "pi-4",
+          "ref": "3.4",
+          "label": "Prompt storage separated from user data",
+          "detail": "System prompts NOT in the same DB as user data — this was the core Lilli problem",
+          "critical": true,
+          "check_command": "# Review: Where are config files stored? Same access path as user data?",
+          "tags": ["prompt-integrity", "architecture"]
+        },
+        {
+          "id": "pi-5",
+          "ref": "3.5",
+          "label": "Skill activation only through manual config",
+          "detail": "New skills cannot be dynamically activated by user input or MCP responses",
+          "critical": false,
+          "check_command": "# Review: Can an agent create and activate new SKILL.md files via tool calls?",
+          "tags": ["prompt-integrity", "access-control"]
+        }
+      ]
+    },
+    {
+      "id": "cross-user",
+      "number": "04",
+      "title": "Cross-User Isolation",
+      "subtitle": "Lilli lesson: IDOR allowed access to other employees' search histories",
+      "icon": "👤",
+      "accent": "#A855F7",
+      "doc": "docs/04-cross-user.md",
+      "lilli_vector": true,
+      "items": [
+        {
+          "id": "cu-1",
+          "ref": "4.1",
+          "label": "User data strictly separated",
+          "detail": "Cross-platform/cross-tenant isolation. Telegram user cannot access WhatsApp conversations of another user",
+          "critical": true,
+          "check_command": "# Review: How are user sessions separated across platforms?",
+          "tags": ["isolation", "access-control"]
+        },
+        {
+          "id": "cu-2",
+          "ref": "4.2",
+          "label": "No sequential or predictable IDs",
+          "detail": "UUIDs or equivalent. Sequential IDs (user_1, user_2) enable trivial enumeration",
+          "critical": true,
+          "check_command": "# Review: Check user/session/resource ID formats in codebase",
+          "tags": ["isolation", "idor"]
+        },
+        {
+          "id": "cu-3",
+          "ref": "4.3",
+          "label": "RAG queries enforce user/tenant filters",
+          "detail": "Mandatory where-clause for user/tenant in all data queries. Enforced at data layer, not app layer",
+          "critical": true,
+          "check_command": "# Review: Is there a mandatory tenant filter in all RAG/data queries?",
+          "tags": ["isolation", "rag", "database"]
+        },
+        {
+          "id": "cu-4",
+          "ref": "4.4",
+          "label": "Session tokens cryptographically secure",
+          "detail": "Cryptographically random, sufficient length. Not derived from user-visible info",
+          "critical": false,
+          "check_command": "# Review: How are sessions generated and validated?",
+          "tags": ["auth", "session"]
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "number": "05",
+      "title": "Secrets Management",
+      "subtitle": "Prevent agent access to credentials and API keys",
+      "icon": "🗝",
+      "accent": "#22C55E",
+      "doc": "docs/05-secrets.md",
+      "lilli_vector": false,
+      "items": [
+        {
+          "id": "env-1",
+          "ref": "5.1",
+          "label": "No .env in workspace root or agent-accessible paths",
+          "detail": "AI agents can read files in working directory. Secrets files must not be present",
+          "critical": true,
+          "check_command": "find . -name '.env*' -not -path '*/node_modules/*' 2>/dev/null",
+          "tags": ["secrets", "file-access"]
+        },
+        {
+          "id": "env-2",
+          "ref": "5.2",
+          "label": "Vault references instead of plaintext secrets",
+          "detail": "Use op:// (1Password), vault: (HashiCorp), or equivalent — never plaintext keys",
+          "critical": true,
+          "check_command": "grep -rn 'sk-\\|AKIA\\|ghp_\\|xoxb-\\|xoxp-' .env* *.env 2>/dev/null",
+          "tags": ["secrets", "vault"]
+        },
+        {
+          "id": "env-3",
+          "ref": "5.3",
+          "label": "PreToolUse hook blocks .env access",
+          "detail": "settings.json deny-rules are unreliable (GitHub Issue #6699). PreToolUse hooks are the only dependable protection",
+          "critical": true,
+          "check_command": "cat ~/.claude/settings.json | python3 -c \"import sys,json; h=json.load(sys.stdin).get('hooks',{}); [print(k,v) for k,v in h.items() if 'PreTool' in k]\"",
+          "tags": ["secrets", "hooks"],
+          "references": ["https://github.com/anthropics/claude-code/issues/6699"]
+        },
+        {
+          "id": "env-4",
+          "ref": "5.4",
+          "label": ".claude/settings.json in .gitignore",
+          "detail": "Prevents accidental commit of settings including hook configurations",
+          "critical": false,
+          "check_command": "grep '.claude' .gitignore",
+          "tags": ["secrets", "git"]
+        },
+        {
+          "id": "env-5",
+          "ref": "5.5",
+          "label": "Sensitive paths blocked via hook",
+          "detail": "Block agent read/edit on ~/.ssh/, *.pem, *.key, credentials.json, service-account.json",
+          "critical": false,
+          "check_command": "# Check if PreToolUse hook includes sensitive paths in blocklist",
+          "tags": ["secrets", "hooks", "file-access"]
+        }
+      ]
+    },
+    {
+      "id": "mcp-security",
+      "number": "06",
+      "title": "MCP Server Security",
+      "subtitle": "Tool protocol security and server trust boundaries",
+      "icon": "🔌",
+      "accent": "#EAB308",
+      "doc": "docs/06-mcp-security.md",
+      "lilli_vector": false,
+      "items": [
+        {
+          "id": "mcp-1",
+          "ref": "6.1",
+          "label": "enableAllProjectMcpServers is false or unset",
+          "detail": "true = auto-run any MCP server found in project config. Equivalent to running untrusted code",
+          "critical": true,
+          "check_command": "cat ~/.claude/settings.json | grep 'enableAll'",
+          "tags": ["mcp", "access-control"]
+        },
+        {
+          "id": "mcp-2",
+          "ref": "6.2",
+          "label": "Only explicitly allowlisted MCP servers active",
+          "detail": "Vetted and explicitly enabled servers only",
+          "critical": true,
+          "check_command": "cat ~/.claude/settings.json | grep -A 10 'enabledMcp'",
+          "tags": ["mcp", "access-control"]
+        },
+        {
+          "id": "mcp-3",
+          "ref": "6.3",
+          "label": "Each MCP server assessed for prompt injection risk",
+          "detail": "Tool responses processed by AI can contain crafted content that manipulates behavior",
+          "critical": true,
+          "check_command": "# Review: List all active servers and their tool response types",
+          "tags": ["mcp", "prompt-injection"]
+        },
+        {
+          "id": "mcp-4",
+          "ref": "6.4",
+          "label": "Remote MCP servers not publicly reachable",
+          "detail": "Use VPN, SSH tunnels, or private networking. Not directly exposed to internet",
+          "critical": false,
+          "check_command": "# Test: nmap <remote-host-ip> from external network",
+          "tags": ["mcp", "network"]
+        },
+        {
+          "id": "mcp-5",
+          "ref": "6.5",
+          "label": "MCP transport encrypted",
+          "detail": "TLS for HTTP/SSE connections. stdio for local is inherently secure",
+          "critical": false,
+          "check_command": "# Check: Are MCP connections over stdio (local) or HTTP? If HTTP: TLS active?",
+          "tags": ["mcp", "encryption"]
+        }
+      ]
+    },
+    {
+      "id": "isolation",
+      "number": "07",
+      "title": "Isolation & Sandboxing",
+      "subtitle": "Contain blast radius of compromised agents",
+      "icon": "📦",
+      "accent": "#06B6D4",
+      "doc": "docs/07-isolation.md",
+      "lilli_vector": false,
+      "items": [
+        {
+          "id": "iso-1",
+          "ref": "7.1",
+          "label": "AI tool runs under standard user account",
+          "detail": "No admin/root. Principle of least privilege",
+          "critical": true,
+          "check_command": "whoami && groups $USER",
+          "tags": ["isolation", "privilege"]
+        },
+        {
+          "id": "iso-2",
+          "ref": "7.2",
+          "label": "Untrusted repos opened in containers/VMs",
+          "detail": "Never open unknown repositories directly on the host",
+          "critical": false,
+          "check_command": "ls .devcontainer/ 2>/dev/null",
+          "tags": ["isolation", "container"]
+        },
+        {
+          "id": "iso-3",
+          "ref": "7.3",
+          "label": "Container hardening active",
+          "detail": "Mount /dev/null over .env in devcontainer: -v /dev/null:/workspace/.env",
+          "critical": false,
+          "check_command": "cat .devcontainer/devcontainer.json 2>/dev/null | grep 'null'",
+          "tags": ["isolation", "container", "secrets"]
+        },
+        {
+          "id": "iso-4",
+          "ref": "7.4",
+          "label": "SSH keys excluded from agent access",
+          "detail": "PreToolUse hook blocks access to ~/.ssh/",
+          "critical": false,
+          "check_command": "# Check if hook blocklist includes ~/.ssh/",
+          "tags": ["isolation", "secrets", "hooks"]
+        }
+      ]
+    },
+    {
+      "id": "hooks",
+      "number": "08",
+      "title": "Hooks & Execution Gates",
+      "subtitle": "Runtime enforcement and human-in-the-loop boundaries",
+      "icon": "🚧",
+      "accent": "#F43F5E",
+      "doc": "docs/08-hooks.md",
+      "lilli_vector": false,
+      "items": [
+        {
+          "id": "hook-1",
+          "ref": "8.1",
+          "label": "PreToolUse bash firewall hook active",
+          "detail": "Blocks rm -rf, external curl, pipe-to-shell. See examples/hooks/pretool-bash-firewall.sh",
+          "critical": true,
+          "check_command": "cat ~/.claude/settings.json | python3 -c \"import sys,json; d=json.load(sys.stdin); [print(json.dumps(v,indent=2)) for k,v in d.get('hooks',{}).items()]\" 2>/dev/null | head -40",
+          "tags": ["hooks", "bash", "execution"]
+        },
+        {
+          "id": "hook-2",
+          "ref": "8.2",
+          "label": "Write-protection extended to prompt/config files",
+          "detail": "Not just secrets — also SKILL.md, CLAUDE.md, AGENTS.md. See examples/hooks/pretool-write-protection.sh",
+          "critical": true,
+          "check_command": "# Check if hook protected-file list includes config files",
+          "tags": ["hooks", "prompt-integrity"]
+        },
+        {
+          "id": "hook-3",
+          "ref": "8.3",
+          "label": "HITL protocol formalized as security gate",
+          "detail": "Explicit thresholds: which actions are NEVER allowed without human confirmation? (>5 file deletes, public API changes, DB migrations, secrets access)",
+          "critical": false,
+          "check_command": "# Review: Is there a documented clarification protocol with defined thresholds?",
+          "tags": ["hooks", "hitl", "governance"]
+        },
+        {
+          "id": "hook-4",
+          "ref": "8.4",
+          "label": "Audit logging for all tool calls",
+          "detail": "Forensic trail for incident analysis. See examples/hooks/pretool-audit-logger.sh",
+          "critical": false,
+          "check_command": "# Check if a logging hook exists or audit_level is set",
+          "tags": ["hooks", "logging", "forensics"]
+        },
+        {
+          "id": "hook-5",
+          "ref": "8.5",
+          "label": "Hook matchers precise, not wildcard",
+          "detail": "Wildcard * processes every tool call. Use specific matchers (Bash, Edit|Write) for performance",
+          "critical": false,
+          "check_command": "# Review hook matcher patterns for precision vs coverage balance",
+          "tags": ["hooks", "performance"]
+        }
+      ]
+    },
+    {
+      "id": "supply-chain",
+      "number": "09",
+      "title": "Supply Chain & Updates",
+      "subtitle": "Dependency security and operational hygiene",
+      "icon": "📡",
+      "accent": "#8B5CF6",
+      "doc": "docs/09-supply-chain.md",
+      "lilli_vector": false,
+      "items": [
+        {
+          "id": "sup-1",
+          "ref": "9.1",
+          "label": "AI tool on current version",
+          "detail": "Known CVEs (e.g. CVE-2025-55284) patched in newer versions. Update regularly",
+          "critical": true,
+          "check_command": "claude --version && npm list -g @anthropic-ai/claude-code",
+          "tags": ["supply-chain", "updates"]
+        },
+        {
+          "id": "sup-2",
+          "ref": "9.2",
+          "label": "npm/pip lifecycle scripts disabled",
+          "detail": "postinstall scripts can execute arbitrary code. npm config set ignore-scripts true",
+          "critical": false,
+          "check_command": "npm config get ignore-scripts",
+          "tags": ["supply-chain", "npm"]
+        },
+        {
+          "id": "sup-3",
+          "ref": "9.3",
+          "label": "No PII/PHI/production data in agent context",
+          "detail": "Never load customer data, PII, or PHI into AI agent sessions",
+          "critical": true,
+          "check_command": "# Policy review: Are production data files loaded into Claude sessions?",
+          "tags": ["data-protection", "compliance"]
+        },
+        {
+          "id": "sup-4",
+          "ref": "9.4",
+          "label": "Transcript retention limited",
+          "detail": "Session transcripts may contain secrets. Limit to 7–14 days",
+          "critical": false,
+          "check_command": "ls -la ~/.claude/transcripts/ 2>/dev/null | wc -l",
+          "tags": ["data-protection", "retention"]
+        },
+        {
+          "id": "sup-5",
+          "ref": "9.5",
+          "label": "Monthly settings audit process",
+          "detail": "Check settings.json for drift. CI pipeline or calendar reminder",
+          "critical": false,
+          "check_command": "# Does a recurring security config review exist?",
+          "tags": ["governance", "process"]
+        }
+      ]
+    }
+  ],
+  "audit_prompt": {
+    "description": "Copy-paste into a Claude Code session for automated system check",
+    "file": "audit/prompt-v2.md",
+    "system_context": [
+      "Claude Code on macOS",
+      "Claude Desktop with SKILL.md architecture",
+      "MCP gateway (e.g. OpenClaw) connecting messaging platforms",
+      "Obsidian or equivalent as knowledge graph / RAG layer"
+    ],
+    "output_format": {
+      "statuses": [
+        { "icon": "✅", "label": "IMPLEMENTED", "description": "With evidence" },
+        { "icon": "⚠️", "label": "PARTIAL", "description": "What's missing" },
+        { "icon": "❌", "label": "NOT IMPLEMENTED", "description": "Fix + priority" },
+        { "icon": "ℹ️", "label": "NOT APPLICABLE", "description": "Justification" }
+      ],
+      "sections": [
+        "Executive Summary (score, critical gaps, Lilli-vector relevance)",
+        "Detail Report (per-item status + finding)",
+        "Prioritized Roadmap (immediate / short-term / medium-term)"
+      ]
+    }
+  },
+  "tags_index": {
+    "network": ["api-1", "api-2", "api-4", "mcp-4"],
+    "recon-defense": ["api-1", "api-2", "api-3"],
+    "auth": ["api-3", "cu-4"],
+    "injection": ["inj-1", "inj-2", "inj-3", "inj-5"],
+    "database": ["inj-1", "inj-3", "cu-3"],
+    "prompt-injection": ["inj-4", "mcp-3"],
+    "prompt-integrity": ["pi-1", "pi-2", "pi-3", "pi-4", "pi-5", "hook-2"],
+    "isolation": ["cu-1", "cu-2", "iso-1", "iso-2", "iso-3", "iso-4"],
+    "secrets": ["env-1", "env-2", "env-3", "env-4", "env-5", "iso-3"],
+    "hooks": ["env-3", "env-5", "pi-2", "iso-4", "hook-1", "hook-2", "hook-3", "hook-4", "hook-5"],
+    "mcp": ["inj-4", "mcp-1", "mcp-2", "mcp-3", "mcp-4", "mcp-5"],
+    "supply-chain": ["sup-1", "sup-2"],
+    "data-protection": ["sup-3", "sup-4"],
+    "governance": ["hook-3", "sup-5"]
+  }
+}
