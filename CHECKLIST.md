@@ -90,13 +90,41 @@ Each item is marked with its criticality level:
 
 ## Scoring
 
+> Updated: 43 → 51 checkpoints, 9 → 11 categories (v2, March 2026)
+
+
 | Rating | Criteria |
 |--------|----------|
-| **🟢 Hardened** | All 24 critical items ✅, ≥80% recommended items |
-| **🟡 Acceptable** | All 24 critical items ✅, <80% recommended items |
+| **🟢 Hardened** | All 28 critical items ✅, ≥80% recommended items |
+| **🟡 Acceptable** | All 28 critical items ✅, <80% recommended items |
 | **🟠 At Risk** | 1–5 critical items missing |
 | **🔴 Critical** | 6+ critical items missing |
 
 ---
 
 *Last updated: March 2026*
+
+## 10 · Agent Memory Security
+
+*Emerging threat: "Memory Poisoning" — malicious content injected into long-term agent memory through processed documents or indirect prompt injection, permanently altering agent behavior.*
+
+- [ ] 🔴 **10.1** Agent memory entries validated against injection patterns before storage
+- [ ] 🔴 **10.2** Memory writes only from trusted sources — external content (web pages, documents, tool responses) never written to memory without sanitization
+- [ ] 🟡 **10.3** Memory integrity auditable (hash comparison, diff tracking, or append-only audit trail)
+
+## 11 · Multi-Agent Security
+
+*When orchestrating multiple agents (sub-agents, tool-calling agents), the communication between them becomes an attack surface.*
+
+- [ ] 🔴 **11.1** Sub-agent output verified before use by orchestrating agent (factual spot-checks, not just format validation)
+- [ ] 🟡 **11.2** Least privilege per agent — sub-agents have only the permissions needed for their specific task
+- [ ] 🟡 **11.3** Agent-to-agent communication authenticated (no spoofed completion events)
+
+## Additions to existing categories
+
+### 02 · Injection & Input Validation
+- [ ] 🔴 **2.6** Long-term memory (vector DB, markdown files, conversation history) protected against indirect injection from retrieved documents
+
+### 09 · Supply Chain & Updates
+- [ ] 🟡 **9.6** Incident response plan for AI-specific incidents (compromised agent, prompt injection breach, data exfiltration via tool use)
+- [ ] 🟡 **9.7** Regular red teaming — manual or automated (e.g., Microsoft PyRIT) — at least quarterly
