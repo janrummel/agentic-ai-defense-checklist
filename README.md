@@ -21,7 +21,7 @@ This repository distills the lessons from that breach (and independent analysis 
 
 ## Origin Story
 
-This started as a personal security audit after seeing the Lilli breach disclosed on LinkedIn. The goal was to systematically check our own AI agent stack against the attack patterns described by CodeWall.ai. The result turned out to be useful beyond our own setup — a structured, source-backed checklist that any team can apply — so we open-sourced it.
+This started as a personal security audit after the Lilli breach was disclosed on LinkedIn: a systematic check of one real AI agent stack against the attack patterns described by CodeWall.ai. The result turned out to be useful beyond that single setup — a structured, source-backed checklist that any team can apply — so it was open-sourced.
 
 ## Who This Is For
 
@@ -117,7 +117,7 @@ The difference now: **AI agents find these basics at machine speed.** What took 
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Priority areas:
 - Additional hook examples for other AI coding tools (Cursor, Windsurf, etc.)
