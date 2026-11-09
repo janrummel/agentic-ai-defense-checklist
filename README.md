@@ -138,6 +138,10 @@ This checklist is a **diagnostic tool for self-assessment**, not professional se
 
 The hook scripts in `examples/` are **reference implementations**. Read and understand them before deploying. Test in a non-critical environment first.
 
+## Publishing
+
+https://janrummel.github.io/agentic-ai-defense-checklist/ is served by GitHub Pages straight from branch `main`, folder `/`. No build step: the files are static HTML, CSS and JavaScript.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
