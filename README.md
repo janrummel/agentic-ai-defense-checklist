@@ -9,6 +9,8 @@
 
 ---
 
+> **Status: completed (as of July 2026).** No further development; the website stays online and the repository is archived (read-only).
+
 ## Why This Exists
 
 On March 9, 2026, security startup [CodeWall.ai](https://codewall.ai) disclosed that their autonomous AI agent breached McKinsey's internal AI platform **Lilli** — gaining full read/write access to the production database within **2 hours**. No credentials. No insider knowledge. No human-in-the-loop.
